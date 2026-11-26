@@ -14,7 +14,19 @@ const { closeDb, getDb } = await import('../src/db/database.js');
 const { decryptSecret, encryptSecret } = await import('../src/security/crypto.js');
 const { sanitizeEmailContent } = await import('../src/security/sanitize.js');
 const { redactSensitivePatterns } = await import('../src/services/aiService.js');
+const { processMailQueue, waitForMailQueueIdle } = await import('../src/services/mailDeliveryEngine.js');
 const { processDueBackgroundJobs } = await import('../src/services/sendService.js');
+
+/** Allocates an ephemeral loopback TCP port and immediately closes it for deterministic refusal testing. */
+async function allocateClosedPort(): Promise<number> {
+  const netMod = await import('node:net');
+  const srv = netMod.createServer();
+  await new Promise<void>((resolve) => srv.listen(0, '127.0.0.1', () => resolve()));
+  const addr = srv.address();
+  const port = addr && typeof addr === 'object' ? addr.port : 1;
+  await new Promise<void>((resolve) => srv.close(() => resolve()));
+  return port;
+}
 
 let server: ReturnType<ReturnType<typeof createApp>['listen']>;
 let baseUrl = '';
@@ -57,6 +69,7 @@ before(async () => {
 });
 
 after(async () => {
+  await waitForMailQueueIdle();
   (server as any).closeAllConnections?.();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   closeDb();
@@ -722,10 +735,16 @@ describe('Hybrid Mode A: Hosted Domains, DKIM, Incoming MX, Outbound MTA, RBAC &
         text: 'This traversed submission AUTH, mail_queue, DKIM signing, and direct MX delivery.',
       });
 
-      // Run worker sweep deterministically and inspect remote sink + DB delivery status
-      for (let i = 0; i < 4 && !capturedRemoteMime; i++) {
+      // Wait for both background sweep completion and remote sink / DB status transition
+      for (let i = 0; i < 30; i++) {
         await processMailQueue(getDb());
-        if (!capturedRemoteMime) await new Promise((r) => setTimeout(r, 80));
+        const qRow = getDb()
+          .prepare("SELECT status FROM mail_queue WHERE subject = 'DKIM Signed Outbound MTA Test' ORDER BY created_at DESC LIMIT 1")
+          .get() as { status: string } | undefined;
+        if (capturedRemoteMime.includes('DKIM-Signature:') && qRow?.status === 'accepted_by_mx') {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 50));
       }
 
       assert.ok(capturedRemoteMime.includes('DKIM-Signature:'), 'Expected DKIM-Signature header on outbound message');
@@ -1146,11 +1165,7 @@ describe('Next-Gen Ecosystem: Tasks, Calendar, Collaboration RBAC, AI Workflows,
     // Queue idempotency + dead-letter CHECK transition + observability metrics
     const { enqueueHostedOutgoingMail } = await import('../src/services/mailDeliveryEngine.js');
     const { config } = await import('../src/config.js');
-    const netMod = await import('node:net');
-    const closedSrv = netMod.createServer();
-    await new Promise<void>((r) => closedSrv.listen(0, '127.0.0.1', () => r()));
-    const deadPort = (closedSrv.address() as any).port;
-    await new Promise<void>((r) => closedSrv.close(() => r()));
+    const deadPort = await allocateClosedPort();
 
     const prevMxPort = config.smtp.outboundMxPort;
     const prevMxHost = process.env.CADENCE_MX_OVERRIDE_HOST;
@@ -1195,9 +1210,10 @@ describe('Next-Gen Ecosystem: Tasks, Calendar, Collaboration RBAC, AI Workflows,
       });
       assert.ok(idempA.queueId && idempA.queueId === idempB.queueId);
 
-      for (let i = 0; i < 40; i++) {
+      for (let i = 0; i < 60; i++) {
+        await processMailQueue(db);
         const st = (db.prepare('SELECT status FROM mail_queue WHERE id = ?').get(idempA.queueId) as { status: string }).status;
-        if (st !== 'queued' && st !== 'delivering') break;
+        if (st !== 'queued' && st !== 'processing') break;
         await new Promise((r) => setTimeout(r, 25));
       }
 
@@ -1621,6 +1637,15 @@ describe('Next-Gen Ecosystem: Tasks, Calendar, Collaboration RBAC, AI Workflows,
 
   it('runs recurring 05:00 AM scheduled mail with attachments, keyword Google Maps location auto-replies, and shared info vault', async () => {
     const db = getDb();
+    const { config } = await import('../src/config.js');
+    const deadPort = await allocateClosedPort();
+
+    const prevMxPort = config.smtp.outboundMxPort;
+    const prevMxHost = process.env.CADENCE_MX_OVERRIDE_HOST;
+    config.smtp.outboundMxPort = deadPort;
+    process.env.CADENCE_MX_OVERRIDE_HOST = '127.0.0.1';
+
+    try {
 
     // 1. Upload reusable automation file to Vault & verify sandboxed download headers
     const assetUpload = await api('/api/v1/automations/assets', {
@@ -1777,5 +1802,11 @@ describe('Next-Gen Ecosystem: Tasks, Calendar, Collaboration RBAC, AI Workflows,
     assert.equal(updatedSched.runCount, 2);
     assert.ok(new Date(updatedSched.nextRunAt).getTime() > Date.now());
     assert.ok(listAfter.data.logs.some((l: any) => l.automationId === schedId && l.status === 'sent'));
+    await waitForMailQueueIdle();
+    } finally {
+      config.smtp.outboundMxPort = prevMxPort;
+      if (prevMxHost === undefined) delete process.env.CADENCE_MX_OVERRIDE_HOST;
+      else process.env.CADENCE_MX_OVERRIDE_HOST = prevMxHost;
+    }
   });
 });

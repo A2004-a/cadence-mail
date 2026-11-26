@@ -518,12 +518,37 @@ function isPermanentSmtpError(err: any): { permanent: boolean; code: number | nu
   return { permanent: false, code: responseCode, message: msg };
 }
 
-let queueSweepInFlight = false;
+let activeQueueSweep: Promise<void> | null = null;
+let sweepRequestedAgain = false;
+
+export async function waitForMailQueueIdle(): Promise<void> {
+  while (activeQueueSweep) {
+    await activeQueueSweep;
+  }
+}
 
 export async function processMailQueue(db: DatabaseSync = getDb()): Promise<void> {
-  if (queueSweepInFlight) return;
-  queueSweepInFlight = true;
+  if (activeQueueSweep) {
+    sweepRequestedAgain = true;
+    await activeQueueSweep;
+    return;
+  }
 
+  activeQueueSweep = (async () => {
+    try {
+      do {
+        sweepRequestedAgain = false;
+        await runSingleQueueSweep(db);
+      } while (sweepRequestedAgain);
+    } finally {
+      activeQueueSweep = null;
+    }
+  })();
+
+  await activeQueueSweep;
+}
+
+async function runSingleQueueSweep(db: DatabaseSync): Promise<void> {
   try {
     const nowIso = new Date().toISOString();
     const dueJobs = db
@@ -635,7 +660,7 @@ export async function processMailQueue(db: DatabaseSync = getDb()): Promise<void
 
         const doneNow = new Date().toISOString();
         db.prepare(
-          "UPDATE mail_queue SET status = 'accepted_by_mx', attempts = ?, remote_mx_host = ?, smtp_response = ?, last_error = NULL, updated_at = ?, completed_at = ? WHERE id = ?"
+          "UPDATE mail_queue SET status = 'accepted_by_mx', attempts = ?, remote_mx_host = ?, smtp_response = ?, last_error = NULL, updated_at = ?, completed_at = ? WHERE id = ? AND status = 'processing'"
         ).run(attempts, acceptedMx, lastResp, doneNow, doneNow, job.id);
 
         if (job.message_id) {
@@ -677,7 +702,7 @@ export async function processMailQueue(db: DatabaseSync = getDb()): Promise<void
         if (info.permanent || attempts >= maxAttempts) {
           const finalStatus = info.permanent ? 'bounced' : 'failed';
           db.prepare(
-            "UPDATE mail_queue SET status = ?, attempts = ?, last_error = ?, smtp_response = ?, updated_at = ?, completed_at = ? WHERE id = ?"
+            "UPDATE mail_queue SET status = ?, attempts = ?, last_error = ?, smtp_response = ?, updated_at = ?, completed_at = ? WHERE id = ? AND status = 'processing'"
           ).run(finalStatus, attempts, info.message, info.message, failNow, failNow, job.id);
 
           if (job.message_id) {
@@ -727,7 +752,7 @@ export async function processMailQueue(db: DatabaseSync = getDb()): Promise<void
           const delaySec = Math.min(1800, 30 * Math.pow(3, attempts - 1));
           const nextAttemptIso = new Date(Date.now() + delaySec * 1000).toISOString();
           db.prepare(
-            "UPDATE mail_queue SET status = 'retry_pending', attempts = ?, next_attempt_at = ?, last_error = ?, updated_at = ? WHERE id = ?"
+            "UPDATE mail_queue SET status = 'retry_pending', attempts = ?, next_attempt_at = ?, last_error = ?, updated_at = ? WHERE id = ? AND status = 'processing'"
           ).run(attempts, nextAttemptIso, info.message, failNow, job.id);
 
           if (job.message_id) {
@@ -766,8 +791,11 @@ export async function processMailQueue(db: DatabaseSync = getDb()): Promise<void
         }
       }
     }
-  } finally {
-    queueSweepInFlight = false;
+  } catch (err: any) {
+    if (err?.code === 'ERR_INVALID_STATE' || String(err?.message || '').includes('database is not open')) {
+      return;
+    }
+    throw err;
   }
 }
 
@@ -784,7 +812,7 @@ export function moveQueueJobToDeadLetter(db: DatabaseSync, queueId: string, reas
   const now = new Date().toISOString();
   const res = db
     .prepare(
-      "UPDATE mail_queue SET status = 'dead_letter', last_error = ?, completed_at = ?, updated_at = ? WHERE id = ? AND status IN ('queued', 'delivering', 'retry_pending', 'failed', 'bounced')"
+      "UPDATE mail_queue SET status = 'dead_letter', last_error = ?, completed_at = ?, updated_at = ? WHERE id = ? AND status IN ('queued', 'processing', 'retry_pending', 'failed', 'bounced')"
     )
     .run(reason, now, now, queueId);
   return res.changes > 0;

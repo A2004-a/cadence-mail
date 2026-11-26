@@ -56,7 +56,7 @@ export const YAHOO_CAPABILITIES: ProviderCapabilities = {
 };
 
 function createImapClient(creds: ImapSmtpCredentials): ImapFlow {
-  return new ImapFlow({
+  const client = new ImapFlow({
     host: creds.imapHost.trim(),
     port: creds.imapPort,
     secure: creds.imapPort === 993 ? true : creds.imapPort === 143 ? false : creds.imapSecure,
@@ -69,6 +69,9 @@ function createImapClient(creds: ImapSmtpCredentials): ImapFlow {
     },
     logger: false,
   });
+  // Prevent uncaught EventEmitter errors from async socket teardown failures
+  client.on('error', () => {});
+  return client;
 }
 
 function createSmtpTransporter(creds: ImapSmtpCredentials) {
