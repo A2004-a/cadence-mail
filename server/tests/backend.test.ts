@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import type { RemoteMessagePayload } from '../src/providers/types.js';
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cadence-test-'));
 process.env.CADENCE_DATA_DIR = tempDir;
@@ -26,6 +27,35 @@ async function allocateClosedPort(): Promise<number> {
   const port = addr && typeof addr === 'object' ? addr.port : 1;
   await new Promise<void>((resolve) => srv.close(() => resolve()));
   return port;
+}
+
+/** Builds a complete RemoteMessagePayload test fixture with sensible defaults. */
+function buildTestMessagePayload(
+  overrides: Partial<RemoteMessagePayload> &
+    Pick<RemoteMessagePayload, 'remoteId' | 'messageIdHeader' | 'fromAddress' | 'to' | 'subject'>
+): RemoteMessagePayload {
+  const nowIso = new Date().toISOString();
+  return {
+    inReplyTo: '',
+    referencesHeader: '',
+    fromName: '',
+    cc: [],
+    bcc: [],
+    replyTo: [],
+    rawHtml: '',
+    rawText: '',
+    sentAt: nowIso,
+    receivedAt: nowIso,
+    isRead: false,
+    isStarred: false,
+    isImportant: false,
+    isDraft: false,
+    isSpam: false,
+    isTrash: false,
+    isArchived: false,
+    attachments: [],
+    ...overrides,
+  };
 }
 
 let server: ReturnType<ReturnType<typeof createApp>['listen']>;
@@ -1334,28 +1364,19 @@ describe('Next-Gen Ecosystem: Tasks, Calendar, Collaboration RBAC, AI Workflows,
       db,
       adminUserId,
       aliceAcctId,
-      {
+      buildTestMessagePayload({
         remoteId: 'aged-trash-item-1',
         messageIdHeader: '<aged-trash@cadence.local>',
         fromName: 'Spammer',
         fromAddress: 'spammer@junk.example',
         to: [{ name: 'Alice', address: 'alice@cadence.local' }],
-        cc: [],
-        bcc: [],
-        replyTo: [],
         subject: 'Old Trash Candidate',
         rawHtml: '<p>To be purged by retention policy.</p>',
         rawText: 'To be purged by retention policy.',
         receivedAt: new Date(Date.now() - 45 * 86_400_000).toISOString(),
         isTrash: true,
-        isSpam: false,
         isRead: true,
-        isStarred: false,
-        isImportant: false,
-        isDraft: false,
-        isArchived: false,
-        attachments: [],
-      },
+      }),
       { skipNotifications: true, skipRules: true }
     );
     assert.equal(oldTrash.inserted, true);
@@ -1398,15 +1419,12 @@ describe('Next-Gen Ecosystem: Tasks, Calendar, Collaboration RBAC, AI Workflows,
       db,
       memberUserId,
       bobAcctId,
-      {
+      buildTestMessagePayload({
         remoteId: 'rfc-loop-msg-1',
         messageIdHeader: '<rfc-loop@partner.example>',
         fromName: 'Partner Newsletter',
         fromAddress: 'human-editor@partner.example',
         to: [{ name: 'Bob', address: 'bob@cadence.local' }],
-        cc: [],
-        bcc: [],
-        replyTo: [],
         subject: 'Weekly Digest Loop Test #42',
         rawHtml: '<p>Newsletter body.</p>',
         rawText: 'Newsletter body.',
@@ -1414,15 +1432,7 @@ describe('Next-Gen Ecosystem: Tasks, Calendar, Collaboration RBAC, AI Workflows,
           'Auto-Submitted': 'auto-generated',
           'List-Unsubscribe': '<mailto:unsub@partner.example>',
         },
-        isRead: false,
-        isStarred: false,
-        isImportant: false,
-        isDraft: false,
-        isSpam: false,
-        isTrash: false,
-        isArchived: false,
-        attachments: [],
-      },
+      }),
       { skipNotifications: true }
     );
     assert.equal(listMail.inserted, true);
@@ -1497,27 +1507,18 @@ describe('Next-Gen Ecosystem: Tasks, Calendar, Collaboration RBAC, AI Workflows,
       db,
       memberUserId,
       bobAcctId,
-      {
+      buildTestMessagePayload({
         remoteId: 'empty-trash-1',
         messageIdHeader: '<empty-trash@cadence.local>',
         fromName: 'Temp',
         fromAddress: 'temp@junk.example',
         to: [{ name: 'Bob', address: 'bob@cadence.local' }],
-        cc: [],
-        bcc: [],
-        replyTo: [],
         subject: 'Immediate Trash Clear Target',
         rawHtml: '<p>Erase me</p>',
         rawText: 'Erase me',
         isTrash: true,
-        isSpam: false,
         isRead: true,
-        isStarred: false,
-        isImportant: false,
-        isDraft: false,
-        isArchived: false,
-        attachments: [],
-      },
+      }),
       { skipNotifications: true, skipRules: true }
     );
     assert.equal(tempTrash.inserted, true);
@@ -1714,27 +1715,16 @@ describe('Next-Gen Ecosystem: Tasks, Calendar, Collaboration RBAC, AI Workflows,
       db,
       memberUserId,
       bobAcctId,
-      {
+      buildTestMessagePayload({
         remoteId: 'loc-ask-1',
         messageIdHeader: '<loc-ask-1@guest.example>',
         fromName: 'Sam Visitor',
         fromAddress: 'visitor@guest.example',
         to: [{ name: 'Bob', address: 'bob@cadence.local' }],
-        cc: [],
-        bcc: [],
-        replyTo: [],
         subject: 'Can you share your directions?',
         rawHtml: '<p>Hi, please send your office location.</p>',
         rawText: 'Hi, please send your office location.',
-        isRead: false,
-        isStarred: false,
-        isImportant: false,
-        isDraft: false,
-        isSpam: false,
-        isTrash: false,
-        isArchived: false,
-        attachments: [],
-      },
+      }),
       { skipNotifications: true }
     );
     assert.equal(incomingAsk.inserted, true);
