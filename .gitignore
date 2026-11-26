@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build outputs & Windows single-file desktop executable (>100 MB, built via CI or local script)
+dist/
+server/dist/
+client/dist/
+dist-exe/
+*.exe
+*.tsbuildinfo
+
+# Runtime database, attachments, queues & local master encryption key
+data/
+*.db
+*.db-wal
+*.db-shm
+.cadence-master.key
+
+# Local secrets & env overrides (keep .env.example tracked)
+.env
+.env.local
+.env.*.local
+
+# Test outputs, Python caches & logs
+tests/__pycache__/
+tests/screenshots/
+*.log
+*.tmp
+*.bak
+
+# OS & editor clutter
+.DS_Store
+Thumbs.db
+.impeccable/

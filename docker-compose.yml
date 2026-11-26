@@ -1,0 +1,35 @@
+services:
+  cadence:
+    build: .
+    container_name: cadence-mail-platform
+    restart: unless-stopped
+    ports:
+      - "4280:4280"
+      - "25:25"
+      - "587:587"
+    environment:
+      NODE_ENV: production
+      PORT: 4280
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-https://mail.yourdomain.com}
+      PUBLIC_URL: ${PUBLIC_URL:-https://mail.yourdomain.com}
+      CADENCE_DATA_DIR: /var/lib/cadence
+      CADENCE_ENCRYPTION_KEY: ${CADENCE_ENCRYPTION_KEY:?Set a 64-char hex CADENCE_ENCRYPTION_KEY}
+      CADENCE_SMTP_ENABLED: "true"
+      CADENCE_SMTP_BIND: "0.0.0.0"
+      CADENCE_SMTP_MX_PORT: "25"
+      CADENCE_SMTP_SUBMISSION_PORT: "587"
+      CADENCE_PUBLIC_HOSTNAME: ${CADENCE_PUBLIC_HOSTNAME:-mail.yourdomain.com}
+      CADENCE_ADMIN_EMAIL: ${CADENCE_ADMIN_EMAIL:-admin@yourdomain.com}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+      CADENCE_RELAY_HOST: ${CADENCE_RELAY_HOST:-}
+      CADENCE_RELAY_PORT: ${CADENCE_RELAY_PORT:-587}
+      CADENCE_RELAY_USER: ${CADENCE_RELAY_USER:-}
+      CADENCE_RELAY_PASS: ${CADENCE_RELAY_PASS:-}
+    volumes:
+      - cadence_data:/var/lib/cadence
+
+volumes:
+  cadence_data:

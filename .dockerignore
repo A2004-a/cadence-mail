@@ -1,0 +1,13 @@
+.git/
+node_modules/
+dist-exe/
+data/
+.env
+.env.*
+!.env.example
+*.db*
+*.log
+*.exe
+tests/screenshots/
+tests/__pycache__/
+.impeccable/

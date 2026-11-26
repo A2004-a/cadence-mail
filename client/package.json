@@ -1,0 +1,43 @@
+{
+  "name": "@cadence/client",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.2.5",
+    "@fontsource/onest": "^5.2.5",
+    "@tanstack/react-virtual": "^3.13.6",
+    "@tiptap/extension-color": "^2.11.5",
+    "@tiptap/extension-font-family": "^2.11.5",
+    "@tiptap/extension-highlight": "^2.11.5",
+    "@tiptap/extension-image": "^2.11.5",
+    "@tiptap/extension-link": "^2.11.5",
+    "@tiptap/extension-table": "^2.11.5",
+    "@tiptap/extension-table-cell": "^2.11.5",
+    "@tiptap/extension-table-header": "^2.11.5",
+    "@tiptap/extension-table-row": "^2.11.5",
+    "@tiptap/extension-text-align": "^2.11.5",
+    "@tiptap/extension-text-style": "^2.11.5",
+    "@tiptap/extension-underline": "^2.11.5",
+    "@tiptap/react": "^2.11.5",
+    "@tiptap/starter-kit": "^2.11.5",
+    "dompurify": "^3.2.4",
+    "lucide-react": "^0.483.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/dompurify": "^3.2.0",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.3"
+  }
+}
